@@ -73,6 +73,12 @@ export class ElevenLabsService {
       formData.append('target_language', targetLanguage);
 
       console.log("Starting dubbing process...");
+      console.log("Request parameters:", {
+        sourceLanguage,
+        targetLanguage,
+        contentLength: audioBuffer.length
+      });
+
       const dubbingResponse = await fetch(
         `${this.baseUrl}/v1/dubbing`,
         {
