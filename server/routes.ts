@@ -21,12 +21,19 @@ export async function registerRoutes(app: Express) {
         return res.status(400).json({ message: "Missing audio file or target language" });
       }
 
+      // Validate audio file type
+      if (!req.file.mimetype.startsWith("audio/")) {
+        return res.status(400).json({ message: "Invalid file type. Please upload an audio file." });
+      }
+
       const targetLanguage = req.body.targetLanguage;
       const isValidLanguage = supportedLanguages.some(lang => lang.code === targetLanguage);
 
       if (!isValidLanguage) {
         return res.status(400).json({ message: "Unsupported target language" });
       }
+
+      console.log(`Starting translation to ${targetLanguage}`);
 
       // Create a translation record
       const translation = await storage.createTranslation({
@@ -43,6 +50,8 @@ export async function registerRoutes(app: Express) {
           targetLanguage,
         });
 
+        console.log("Translation completed successfully");
+
         // Update the translation record
         await storage.updateTranslation(translation.id, {
           translatedAudio: translatedAudioBuffer.toString('base64'),
@@ -50,18 +59,27 @@ export async function registerRoutes(app: Express) {
         });
 
         // Send the translated audio back to the client
-        res.set("Content-Type", "audio/wav");
+        res.set("Content-Type", "audio/mpeg");
         res.send(translatedAudioBuffer);
-      } catch (error) {
+      } catch (error: any) {
+        console.error("Translation processing error:", error.message);
+
         // Update the translation record with error status
         await storage.updateTranslation(translation.id, {
           status: "failed",
         });
-        throw error;
+
+        res.status(500).json({ 
+          message: "Translation failed",
+          error: error.message 
+        });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Translation error:", error);
-      res.status(500).json({ message: "Translation failed" });
+      res.status(500).json({ 
+        message: "Translation failed",
+        error: error.message 
+      });
     }
   });
 
