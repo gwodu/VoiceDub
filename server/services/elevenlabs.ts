@@ -19,18 +19,53 @@ export class ElevenLabsService {
     this.apiKey = apiKey;
   }
 
+  private async checkDubbingStatus(dubbingId: string): Promise<boolean> {
+    const response = await fetch(
+      `${this.baseUrl}/v1/dubbing/${dubbingId}`,
+      {
+        method: "GET",
+        headers: {
+          "xi-api-key": this.apiKey,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Failed to check dubbing status: ${await response.text()}`);
+    }
+
+    const status = await response.json();
+    return status.status === "done";
+  }
+
+  private async waitForDubbing(dubbingId: string, maxAttempts = 30): Promise<void> {
+    for (let i = 0; i < maxAttempts; i++) {
+      console.log(`Checking dubbing status (attempt ${i + 1}/${maxAttempts})...`);
+      const isDone = await this.checkDubbingStatus(dubbingId);
+      if (isDone) {
+        console.log("Dubbing completed successfully");
+        return;
+      }
+      // Wait 2 seconds before checking again
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+    throw new Error("Dubbing timed out");
+  }
+
   async translateAudio({ audioBuffer, targetLanguage, sourceLanguage = "en" }: TranslationOptions): Promise<Buffer> {
     try {
-      // Step 1: Convert audio to text
+      // Step 1: Initialize dubbing request
       const formData = new FormData();
       formData.append('audio', audioBuffer, {
         filename: 'audio.wav',
         contentType: 'audio/wav'
       });
+      formData.append('source_language', sourceLanguage);
+      formData.append('target_language', targetLanguage);
 
-      console.log("Step 1: Converting audio to text...");
-      const transcriptionResponse = await fetch(
-        `${this.baseUrl}/v1/audio/transcriptions`,
+      console.log("Starting dubbing process...");
+      const dubbingResponse = await fetch(
+        `${this.baseUrl}/v1/dubbing`,
         {
           method: "POST",
           headers: {
@@ -41,56 +76,47 @@ export class ElevenLabsService {
         }
       );
 
-      if (!transcriptionResponse.ok) {
-        const errorText = await transcriptionResponse.text();
-        console.error('Transcription Error:', {
-          status: transcriptionResponse.status,
-          statusText: transcriptionResponse.statusText,
+      if (!dubbingResponse.ok) {
+        const errorText = await dubbingResponse.text();
+        console.error('Dubbing Request Error:', {
+          status: dubbingResponse.status,
+          statusText: dubbingResponse.statusText,
           error: errorText
         });
-        throw new Error(`Speech-to-text failed: ${errorText}`);
+        throw new Error(`Failed to start dubbing: ${errorText}`);
       }
 
-      const transcription = await transcriptionResponse.json();
-      const originalText = transcription.text;
-      console.log("Original text:", originalText);
+      const dubbingData = await dubbingResponse.json();
+      const dubbingId = dubbingData.dubbing_id;
+      console.log(`Dubbing initiated with ID: ${dubbingId}`);
 
-      // Step 2: Generate dubbed speech
-      const voiceId = "21m00Tcm4TlvDq8ikWAM"; // Default voice ID
-      console.log(`Step 2: Generating dubbed speech with voice ${voiceId}`);
+      // Step 2: Wait for dubbing to complete
+      await this.waitForDubbing(dubbingId);
 
-      const synthesisResponse = await fetch(
-        `${this.baseUrl}/v1/text-to-speech/${voiceId}/stream`,
+      // Step 3: Get the dubbed audio
+      console.log("Retrieving dubbed audio...");
+      const audioResponse = await fetch(
+        `${this.baseUrl}/v1/dubbing/${dubbingId}/audio`,
         {
-          method: "POST",
+          method: "GET",
           headers: {
-            "Accept": "audio/mpeg",
             "xi-api-key": this.apiKey,
-            "Content-Type": "application/json",
+            "Accept": "audio/mpeg",
           },
-          body: JSON.stringify({
-            text: originalText,
-            model_id: "eleven_multilingual_v2",
-            voice_settings: {
-              stability: 0.5,
-              similarity_boost: 0.75,
-            },
-          }),
         }
       );
 
-      if (!synthesisResponse.ok) {
-        const errorText = await synthesisResponse.text();
-        console.error('Speech Synthesis Error:', {
-          status: synthesisResponse.status,
-          statusText: synthesisResponse.statusText,
+      if (!audioResponse.ok) {
+        const errorText = await audioResponse.text();
+        console.error('Audio Retrieval Error:', {
+          status: audioResponse.status,
+          statusText: audioResponse.statusText,
           error: errorText
         });
-        throw new Error(`Text-to-speech failed: ${errorText}`);
+        throw new Error(`Failed to get dubbed audio: ${errorText}`);
       }
 
-      console.log("Speech synthesis successful");
-      const audioArrayBuffer = await synthesisResponse.arrayBuffer();
+      const audioArrayBuffer = await audioResponse.arrayBuffer();
       return Buffer.from(audioArrayBuffer);
     } catch (error) {
       console.error("ElevenLabs API error:", error);
