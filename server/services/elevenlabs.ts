@@ -71,6 +71,8 @@ export class ElevenLabsService {
       });
       formData.append('source_language', sourceLanguage);
       formData.append('target_language', targetLanguage);
+      formData.append('automatic_dubbing', 'true');
+      formData.append('model_id', 'eleven_multilingual_v2');
 
       console.log("Starting dubbing process...");
       console.log("Request parameters:", {
