@@ -21,16 +21,46 @@ export class ElevenLabsService {
 
   async translateAudio({ audioBuffer, targetLanguage, sourceLanguage = "en" }: TranslationOptions): Promise<Buffer> {
     try {
-      // For dubbing, we'll use a sample text in the target language
-      // In a real application, you would want to translate the text first
-      const sampleText = "This is a sample dubbed audio in the target language.";
+      // Step 1: Convert audio to text
+      const formData = new FormData();
+      formData.append('audio', audioBuffer, {
+        filename: 'audio.wav',
+        contentType: 'audio/wav'
+      });
 
-      // Generate speech in target language
+      console.log("Step 1: Converting audio to text...");
+      const transcriptionResponse = await fetch(
+        `${this.baseUrl}/v1/audio/transcriptions`,
+        {
+          method: "POST",
+          headers: {
+            "xi-api-key": this.apiKey,
+            ...formData.getHeaders()
+          },
+          body: formData,
+        }
+      );
+
+      if (!transcriptionResponse.ok) {
+        const errorText = await transcriptionResponse.text();
+        console.error('Transcription Error:', {
+          status: transcriptionResponse.status,
+          statusText: transcriptionResponse.statusText,
+          error: errorText
+        });
+        throw new Error(`Speech-to-text failed: ${errorText}`);
+      }
+
+      const transcription = await transcriptionResponse.json();
+      const originalText = transcription.text;
+      console.log("Original text:", originalText);
+
+      // Step 2: Generate dubbed speech
       const voiceId = "21m00Tcm4TlvDq8ikWAM"; // Default voice ID
-      console.log(`Making request to ElevenLabs API for voice ${voiceId}`);
+      console.log(`Step 2: Generating dubbed speech with voice ${voiceId}`);
 
       const synthesisResponse = await fetch(
-        `${this.baseUrl}/v1/text-to-speech/${voiceId}`,
+        `${this.baseUrl}/v1/text-to-speech/${voiceId}/stream`,
         {
           method: "POST",
           headers: {
@@ -39,8 +69,8 @@ export class ElevenLabsService {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            text: sampleText,
-            model_id: "eleven_multilingual_v1",
+            text: originalText,
+            model_id: "eleven_multilingual_v2",
             voice_settings: {
               stability: 0.5,
               similarity_boost: 0.75,
@@ -51,17 +81,16 @@ export class ElevenLabsService {
 
       if (!synthesisResponse.ok) {
         const errorText = await synthesisResponse.text();
-        console.error('ElevenLabs API Error Response:', {
+        console.error('Speech Synthesis Error:', {
           status: synthesisResponse.status,
           statusText: synthesisResponse.statusText,
-          errorBody: errorText
+          error: errorText
         });
         throw new Error(`Text-to-speech failed: ${errorText}`);
       }
 
-      const audioArrayBuffer = await synthesisResponse.arrayBuffer();
       console.log("Speech synthesis successful");
-
+      const audioArrayBuffer = await synthesisResponse.arrayBuffer();
       return Buffer.from(audioArrayBuffer);
     } catch (error) {
       console.error("ElevenLabs API error:", error);
