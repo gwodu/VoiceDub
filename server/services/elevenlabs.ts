@@ -1,4 +1,5 @@
 import fetch from "node-fetch";
+import FormData from "form-data";
 
 interface TranslationOptions {
   audioBuffer: Buffer;
@@ -20,18 +21,22 @@ export class ElevenLabsService {
 
   async translateAudio({ audioBuffer, targetLanguage, sourceLanguage = "en" }: TranslationOptions): Promise<Buffer> {
     try {
+      // Create form data for audio upload
+      const formData = new FormData();
+      formData.append('audio', audioBuffer, {
+        filename: 'audio.wav',
+        contentType: 'audio/wav'
+      });
+      formData.append('model_id', 'eleven_multilingual_v1');
+
       // Convert audio to text using Speech-to-Text API
-      const transcriptionResponse = await fetch(`${this.baseUrl}/audio/transcribe`, {
+      const transcriptionResponse = await fetch(`${this.baseUrl}/audio/transcriptions`, {
         method: "POST",
         headers: {
-          "Accept": "application/json",
           "xi-api-key": this.apiKey,
-          "Content-Type": "multipart/form-data",
+          ...formData.getHeaders()
         },
-        body: JSON.stringify({
-          audio: audioBuffer.toString('base64'),
-          model_id: "eleven_multilingual_v1"
-        }),
+        body: formData,
       });
 
       if (!transcriptionResponse.ok) {
