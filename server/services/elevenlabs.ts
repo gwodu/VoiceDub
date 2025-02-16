@@ -7,6 +7,15 @@ interface TranslationOptions {
   sourceLanguage?: string;
 }
 
+interface DubbingStatusResponse {
+  status: "queued" | "processing" | "done" | "failed";
+  message?: string;
+}
+
+interface DubbingResponse {
+  dubbing_id: string;
+}
+
 export class ElevenLabsService {
   private apiKey: string;
   private baseUrl = "https://api.elevenlabs.io";
@@ -34,7 +43,7 @@ export class ElevenLabsService {
       throw new Error(`Failed to check dubbing status: ${await response.text()}`);
     }
 
-    const status = await response.json();
+    const status = await response.json() as DubbingStatusResponse;
     return status.status === "done";
   }
 
@@ -86,7 +95,7 @@ export class ElevenLabsService {
         throw new Error(`Failed to start dubbing: ${errorText}`);
       }
 
-      const dubbingData = await dubbingResponse.json();
+      const dubbingData = await dubbingResponse.json() as DubbingResponse;
       const dubbingId = dubbingData.dubbing_id;
       console.log(`Dubbing initiated with ID: ${dubbingId}`);
 
